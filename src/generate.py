@@ -3,6 +3,7 @@ from pathlib import Path
 from random import shuffle
 
 import torch
+import miditok
 from evaluate import load as load_metric
 from miditok import REMI, TokenizerConfig
 from miditok.pytorch_data import DatasetMIDI, DataCollator
@@ -22,14 +23,7 @@ from pathlib import Path
 import os
 
 model_path = Path("./runs/")
-config_path = Path("./tokenizer.json")
-with config_path.open() as f:
-    config = json.load(f)
-# Create TokenizerConfig object directly from the loaded JSON
-tokenizer_config = TokenizerConfig(**config['config'])
-# Create the REMI tokenizer
-tokenizer = REMI(tokenizer_config)
-print(f"Tokenizer vocabulary size: {len(tokenizer)}")
+tokenizer = miditok.REMI.from_pretrained(Path("./tokenizer.json"))
 # Load the model
 model = AutoModelForCausalLM.from_pretrained(str(model_path), local_files_only=True)
 # Generation
