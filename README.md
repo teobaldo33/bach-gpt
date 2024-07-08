@@ -2,7 +2,7 @@
 
 bach-gpt is a simple implementation of a Transformer model to learn how to generate MIDI music. 🎵
 
-It uses the MidiTok library to tokenize and prepare the dataset, then trains on the Mistral model with PyTorch and Transformers. This project is a playful experiment in AI-generated music, inspired by the works of J.S. Bach! 🎼
+It uses the MidiTok library to tokenize and prepare the dataset, then trains on the Mistral model with PyTorch and Transformers. 
 
 While it blatantly steals the code examples from the MidiTok GitHub (thanks, MidiTok team! 🙌), here it's implemented and it actually works! 😄
 
