@@ -71,3 +71,14 @@ Leave out the `--prompt` argument to generate from scratch!
 
 Feel free to fork, experiment, and submit pull requests!
 
+## Sources
+http://jalammar.github.io/illustrated-transformer/
+
+https://afmck.in/posts/2023-05-22-jax-post/
+
+https://afmck.in/posts/2023-06-04-flax-post/
+
+https://github.com/vvvm23/tchaikovsky
+
+https://github.com/Natooz/MidiTok
+
