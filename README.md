@@ -66,10 +66,9 @@ Leave out the `--prompt` argument to generate from scratch!
 ## 🎨 Experimentation Ideas
 
 - Try different model architectures or hyperparameters
-- Experiment with various composers or genres
-- Implement in a VST plugin without UI for DAWs(Digital Audio Workstation).
+- Implement in a VST plugin with UI for DAWs(Digital Audio Workstation).
 
 ## 👥 Contributing
 
-Feel free to fork, experiment, and submit pull requests! This is a playground for music AI enthusiasts. 🎉
+Feel free to fork, experiment, and submit pull requests!
 
