@@ -11,8 +11,7 @@ While it blatantly steals the code examples from the MidiTok GitHub (thanks, Mid
 - MIDI tokenization using MidiTok
 - Training on the Mistral Transformer model
 - Generation of new MIDI sequences
-- Supports GPU acceleration on MacOS
-
+  
 ## 🛠 Installation
 
 ### Dependencies
