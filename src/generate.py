@@ -1,77 +1,82 @@
+import argparse
 from copy import deepcopy
 from pathlib import Path
-from random import shuffle
-
-import torch
-import miditok
-from evaluate import load as load_metric
-from miditok import REMI, TokenizerConfig
-from miditok.pytorch_data import DatasetMIDI, DataCollator
-from miditok.pytorch_data import split_files_for_training
-from miditok.data_augmentation import augment_dataset
-from torch import Tensor, argmax
 from torch.utils.data import DataLoader
-from torch.cuda import is_available as cuda_available, is_bf16_supported
-from torch.backends.mps import is_available as mps_available
-from transformers import AutoModelForCausalLM, MistralConfig, Trainer, TrainingArguments, GenerationConfig, AutoTokenizer
-from transformers.trainer_utils import set_seed
+from transformers import AutoModelForCausalLM, GenerationConfig
 from tqdm import tqdm
-import json
-import json
-from pathlib import Path
+import miditok
+from miditok.pytorch_data import DatasetMIDI, DataCollator
 
-import os
+def load_model_and_tokenizer(model_path, tokenizer_path):
+    tokenizer = miditok.REMI.from_pretrained(Path(tokenizer_path))
+    model = AutoModelForCausalLM.from_pretrained(str(model_path), local_files_only=True)
+    return model, tokenizer
 
-model_path = Path("./runs/")
-tokenizer = miditok.REMI.from_pretrained(Path("./tokenizer.json"))
-# Load the model
-model = AutoModelForCausalLM.from_pretrained(str(model_path), local_files_only=True)
-# Generation
+def setup_generation_config(tokenizer):
+    return GenerationConfig(
+        max_new_tokens=200, num_beams=1, do_sample=True,
+        temperature=0.9, top_k=15, top_p=0.95,
+        epsilon_cutoff=3e-4, eta_cutoff=1e-3,
+        pad_token_id=tokenizer.pad_token_id,
+    )
 
-(gen_results_path := Path('gen_res')).mkdir(parents=True, exist_ok=True)
-generation_config = GenerationConfig(
-    max_new_tokens=200,  # extends samples by 200 tokens
-    num_beams=1,         # no beam search
-    do_sample=True,      # but sample instead
-    temperature=0.9,
-    top_k=15,
-    top_p=0.95,
-    epsilon_cutoff=3e-4,
-    eta_cutoff=1e-3,
-    pad_token_id=tokenizer.pad_token_id,
-)
+def setup_data_loader(midi_paths, tokenizer, batch_size=16):
+    collator = DataCollator(tokenizer["PAD_None"], copy_inputs_as_labels=True)
+    collator.pad_on_left = True
+    collator.eos_token = None
+    kwargs_dataset = {
+        "max_seq_len": 256, "tokenizer": tokenizer,
+        "bos_token_id": tokenizer["BOS_None"],
+        "eos_token_id": tokenizer["EOS_None"]
+    }
+    dataset = DatasetMIDI(midi_paths, **kwargs_dataset)
+    return DataLoader(dataset, batch_size=batch_size, collate_fn=collator)
 
-# Here the sequences are padded to the left, so that the last token along the time dimension
-# is always the last token of each seq, allowing to efficiently generate by batch
-collator = DataCollator(tokenizer["PAD_None"], copy_inputs_as_labels=True)
-collator.pad_on_left = True
-collator.eos_token = None
-midi_paths_test = list(Path("bach_test").glob("**/*.mid")) + list(Path("bach_test").glob("**/*.midi"))
-kwargs_dataset = {"max_seq_len": 256, "tokenizer": tokenizer, "bos_token_id": tokenizer["BOS_None"], "eos_token_id": tokenizer["EOS_None"]}
-dataset_test = DatasetMIDI(midi_paths_test, **kwargs_dataset)
-dataloader_test = DataLoader(dataset_test, batch_size=16, collate_fn=collator)
-model.eval()
-count = 0
-for batch in tqdm(dataloader_test, desc='Testing model / Generating results'):  # (N,T)
-    res = model.generate(
-        inputs=batch["input_ids"].to(model.device),
-        attention_mask=batch["attention_mask"].to(model.device),
-        generation_config=generation_config)  # (N,T)
+def generate_and_save(model, tokenizer, dataloader, generation_config, output_path):
+    model.eval()
+    for count, batch in enumerate(tqdm(dataloader, desc='Generating results')):
+        res = model.generate(
+            inputs=batch["input_ids"].to(model.device),
+            attention_mask=batch["attention_mask"].to(model.device),
+            generation_config=generation_config
+        )
+        
+        for prompt, continuation in zip(batch["input_ids"], res):
+            generated = continuation[len(prompt):]
+            midi = tokenizer.decode(deepcopy(generated))
+            tokens = [generated, prompt, continuation]
+            tokens = [seq.tolist() for seq in tokens]
+            
+            for i, tok_seq in enumerate(tokens[1:], 1):
+                _midi = tokenizer.decode(deepcopy(tok_seq))
+                midi.tracks.append(_midi.tracks[0])
+                midi.tracks[i].name = f'{"Original sample" if i == 1 else "Original sample and continuation"} ({len(tok_seq)} tokens)'
+            
+            midi.tracks[0].name = f'Continuation of original sample ({len(generated)} tokens)'
+            midi.dump_midi(output_path / f'{count}.mid')
+            tokenizer.save_tokens(tokens, output_path / f'{count}.json')
+            count += 1
 
-    # Saves the generated music, as MIDI files and tokens (json)
-    for prompt, continuation in zip(batch["input_ids"], res):
-        generated = continuation[len(prompt):]
-        print(generated)
-        midi = tokenizer.decode(deepcopy(generated))
-        tokens = [generated, prompt, continuation]  # list compr. as seqs of dif. lengths
-        tokens = [seq.tolist() for seq in tokens]
-        for tok_seq in tokens[1:]:
-            _midi = tokenizer.decode(deepcopy(tok_seq))
-            midi.tracks.append(_midi.tracks[0])
-        midi.tracks[0].name = f'Continuation of original sample ({len(generated)} tokens)'
-        midi.tracks[1].name = f'Original sample ({len(prompt)} tokens)'
-        midi.tracks[2].name = f'Original sample and continuation'
-        midi.dump_midi(gen_results_path / f'{count}.mid')
-        tokenizer.save_tokens(tokens, gen_results_path / f'{count}.json')
+def main():
+    parser = argparse.ArgumentParser(description="Generate MIDI using a trained model.")
+    parser.add_argument("--dataset", type=str, help="Path to directory containing MIDI files")
+    args = parser.parse_args()
 
-        count += 1
+    model_path = Path("./runs/")
+    tokenizer_path = Path("./tokenizer.json")
+    output_path = Path('gen_res')
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    model, tokenizer = load_model_and_tokenizer(model_path, tokenizer_path)
+    generation_config = setup_generation_config(tokenizer)
+
+    if args.dataset:
+        midi_paths = list(Path(args.dataset).glob("**/*.mid")) + list(Path(args.dataset).glob("**/*.midi"))
+        dataloader = setup_data_loader(midi_paths, tokenizer)
+    else:
+        dataloader = setup_data_loader([None], tokenizer)
+
+    generate_and_save(model, tokenizer, dataloader, generation_config, output_path)
+
+if __name__ == "__main__":
+    main()
