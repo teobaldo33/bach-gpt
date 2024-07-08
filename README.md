@@ -1,6 +1,6 @@
 # 🎹 bach-gpt
 
-bach-gpt is a fun and simple implementation of a Transformer model to learn how to generate MIDI music. 🎵
+bach-gpt is a simple implementation of a Transformer model to learn how to generate MIDI music. 🎵
 
 It uses the MidiTok library to tokenize and prepare the dataset, then trains on the Mistral model with PyTorch and Transformers. This project is a playful experiment in AI-generated music, inspired by the works of J.S. Bach! 🎼
 
